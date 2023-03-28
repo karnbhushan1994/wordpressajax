@@ -1,0 +1,241 @@
+function my_enqueue()
+{
+
+  wp_enqueue_script('ajax-script', get_template_directory_uri() . '/js/my-ajax-script.js', array('jquery'));
+
+  wp_localize_script(
+    'ajax-script',
+    'my_ajax_object',
+    array('ajax_url' => admin_url('admin-ajax.php'))
+  );
+}
+add_action('wp_enqueue_scripts', 'my_enqueue');
+
+
+function my_ajax_function()
+{
+ 
+  global $wpdb;
+  
+  // Set the number of results per page
+  // Get the current page number
+  $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+  
+  // Get the search term
+  $results_per_page = isset($_GET['results_per_page']) ? sanitize_text_field($_GET['results_per_page']) : '';
+  $search_term = isset($_GET['search']) ? sanitize_text_field($_GET['search']) : '';
+  $keyword = isset($_GET['keyword']) ? sanitize_text_field($_GET['keyword']) : '';
+
+  
+  // Build the SQL query
+  $sql = "SELECT * FROM activity_master WHERE RAK_Activity_Group__c LIKE '%%%s%%' AND Activity_Name__c LIKE '%%%s%%'";
+
+  //$sql = "SELECT * FROM activity_master WHERE RAK_Activity_Group__c LIKE '%%%s%%'";
+  
+  // If there is a search term, add it to the query
+  if (!empty($search_term)) {
+      $sql = $wpdb->prepare($sql, $search_term, $keyword);
+  } else {
+      $sql = sprintf($sql, '', '');
+  }
+  
+  // Get the total number of results
+  $total_results = $wpdb->query($sql);
+  
+  // Calculate the total number of pages
+  $total_pages = $total_results;
+  
+  // Calculate the offset
+  $offset = ($page - 1) * $results_per_page;
+  
+  // Add the LIMIT and OFFSET clauses to the query
+  $sql .= " LIMIT $results_per_page OFFSET $offset";
+  
+  // Execute the query
+  $results = $wpdb->get_results($sql);
+  
+  // Return the results as JSON
+  echo json_encode(array(
+      'results' => $results,
+      'total_pages' => $total_pages
+  ));  
+  die();
+}
+add_action('wp_ajax_my_ajax_function', 'my_ajax_function');
+add_action('wp_ajax_nopriv_my_ajax_function', 'my_ajax_function');
+=====================================================================================================================================
+
+jquery
+
+
+=====================================================================================================================================================================
+
+<script>
+(function($) {
+    $(document).ready(function() {
+
+        /* function scrollToSection(event) {
+            event.preventDefault();
+            var $section = $($(this).attr('href'));
+            $('html, body').animate({
+                scrollTop: $section.offset().top
+            }, 200);
+        }
+        $('[data-scroll]').on('click', scrollToSection); */
+
+        var page = 1;
+        let results_per_page = 20;
+        let totalRecords;
+        var search_term = $('.group').val();
+        var keyword = $('#keyword').val();
+        callMethod(page, search_term, keyword, results_per_page);
+        var error = "Not Found"
+
+        $('#search').on('click', function(e) {
+            e.preventDefault();
+            var search_term = $('.group').val();
+            var keyword = $('#keyword').val();
+            results_per_page = $('.results_per_page').val();
+            callMethod(page, search_term, keyword, results_per_page);
+            generatePaginationLinks();
+        });
+
+        $('.results_per_page').on('click', function(e) {
+            e.preventDefault();
+            $(".results_per_page").val();
+            var search_term = $('.group').val();
+            var keyword = $('#keyword').val();
+            results_per_page = $(this).val();
+            $(".results_per_page2").val(results_per_page);
+            callMethod(page, search_term, keyword, results_per_page);
+            generatePaginationLinks();
+        });
+        $('.results_per_page2').on('click', function(e) {
+            e.preventDefault();
+            $(".results_per_page").val();
+            var search_term = $('.group').val();
+            var keyword = $('#keyword').val();
+            var results_per_page = $(this).val();
+            $(".results_per_page").val(results_per_page);
+            callMethod(page, search_term, keyword, results_per_page);
+            generatePaginationLinks();
+        });
+
+
+        /*pagination */
+
+        // Handle the pagination clicks
+        $('.pagination-container').on('click', 'a', function(e) {
+            e.preventDefault();
+            page = $(this).data('page');
+            var search_term = $('.group').val();
+            var keyword = $('#keyword').val();
+            var results_per_page = $('.results_per_page').val();
+            callMethod(page, search_term, keyword, results_per_page);
+
+            if ($(this).hasClass("enabled")) {
+                $(this).addClass("disabled").removeClass("enabled");
+            }
+            if ($(this).hasClass("disabled")) {
+                $(this).addClass("enabled").removeClass("disabled");
+            }
+        });
+
+        /*one page reload */
+        function callMethod(page, search_term, keyword, results_per_page) {
+
+            // Send the ajax request
+
+            $.ajax({
+                url: my_ajax_object.ajax_url,
+                type: 'GET',
+                dataType: 'json',
+                data: {
+                    action: 'my_ajax_function',
+                    page: page,
+                    search: search_term,
+                    results_per_page: results_per_page,
+                    keyword: keyword
+                },
+                success: function(response) {
+
+                    $('tr:not(:first)').remove();
+                    $('.pagination-container').html("");
+
+                    if (response.results.length > 0) {
+                        var results_html = '';
+                        $.each(response.results, function(index, post) {
+                            results_html += '<tr>';
+                            results_html +=
+                                '<td style="width:30px;white-space:nowrap;"><span>' +
+                                post.Legal_Form__c + '<span></td>';
+                            results_html +=
+                                '<td style="width:30px;white-space:nowrap;"><span>' +
+                                post.RAK_Activity_Code__c + '<span></td>';
+                            results_html +=
+                                '<td style="width:30px;white-space:nowrap;"><span>' +
+                                post.Activity_Name__c + '<span></td>';
+                            results_html +=
+                                '<td style="width:30px;white-space:nowrap;"><span>' +
+                                post.Activity_Type__c + '<span></td>';
+                            results_html +=
+                                '<td style="width:30px;white-space:nowrap;"><span>' +
+                                post.RAK_Activity_Group__c + '<span></td>';
+                            results_html += '</tr>';
+                        });
+                        $('#search-results').after(results_html);
+                        totalRecords = response.total_pages;
+                        generatePaginationLinks();
+                    } else {
+                        results_html += '<tr>';
+                        results_html +=
+                            '<td colspan="5" style="width:30px;white-space:nowrap;text-align:center;"><span>' +
+                            error + '<span></td>';
+                        results_html += '</tr>';
+                        $('.pagination-container').html("");
+                        $('#search-results').after(results_html);
+                    }
+                }
+            });
+        }
+
+        function generatePaginationLinks() {
+            if (results_per_page !="") {
+                // Calculate the total number of pages based on the number of records and records per page
+                const totalPages = Math.ceil(totalRecords / results_per_page);
+
+                // Clear out the pagination container
+                $('.pagination-container').empty();
+
+                // Generate the "Previous" button/link
+                if (page > 1) {
+                    $('.pagination-container').append(
+                        `<a href="#"  onClick="document.getElementById('records_table').scrollIntoView();" data-scroll class="pagination-link" data-page="${page - 1}">&laquo;</a>`
+                        );
+                }
+
+                // Generate the numbered page links
+                for (let i = 1; i <= totalPages; i++) {
+                    if (i === page) {
+                        $('.pagination-container').append(`<span class="current-page">${i}</span>`);
+                    } else {
+                        $('.pagination-container').append(
+                            `<a href="#"  onClick="document.getElementById('records_table').scrollIntoView();" data-scroll class="pagination-link" data-page="${i}">${i}</a>`
+                            );
+                    }
+                }
+
+                // Generate the "Next" button/link
+                if (page < totalPages) {
+                    $('.pagination-container').append(
+                        `<a href="#"  onClick="document.getElementById('records_table').scrollIntoView();" data-scroll class="pagination-link" data-page="${page + 1}">&raquo;</a>`
+                        );
+                }
+            }
+        }
+
+    });
+
+
+})(jQuery);
+</script>
